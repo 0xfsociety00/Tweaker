@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.9.0",
+    r"         Hex-win10 Tweaker v1.6",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
