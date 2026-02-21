@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.2",
+    r"         Hex-win10 Tweaker v1.7.9",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
@@ -141,22 +141,26 @@ def step(msg):
 def ok():
     print("done!")
 
-def reboot():
-    import msvcrt
-    secs = 30
+def after():
     print()
-    print(f"  Restarting in {secs}s... Press any key to cancel.")
-    for i in range(secs, 0, -1):
-        print(f"\r  Restarting in {i}s... Press any key to cancel.  ", end="", flush=True)
-        for _ in range(10):
-            if msvcrt.kbhit():
-                msvcrt.getch()
-                print(f"\r  Restart cancelled. Press Enter to exit.           ")
-                input()
-                return
-            time.sleep(0.1)
-    print(f"\r  Restarting now...                                   ")
-    run("shutdown /r /t 0")
+    r = input("  Restart your PC now? (y/N): ").strip().lower()
+    if r == "y":
+        for i in range(5, 0, -1):
+            print(f"\r  Restarting in {i}...", end="", flush=True)
+            time.sleep(1)
+        print()
+        run("shutdown /r /t 0")
+        return
+
+    print()
+    print("  [1] Exit")
+    print("  [2] Restart tool")
+    print()
+    c = input("  Enter: ").strip()
+    if c == "2":
+        main()
+    else:
+        sys.exit(0)
 
 def specs():
     print("  System:")
@@ -1812,6 +1816,221 @@ def disprun():
     print("  Display tuning complete!")
     print("  Tip: Display Settings -> Advanced display -> verify your refresh rate is active.")
 
+def fps():
+    step("Setting timer resolution to 0.5ms")
+    try:
+        ntdll = ctypes.windll.ntdll
+        ntdll.NtSetTimerResolution(5000, True, ctypes.byref(ctypes.c_ulong()))
+    except:
+        pass
+    run('powershell -NoProfile -NonInteractive -Command "'
+        'Add-Type -TypeDefinition \'using System;using System.Runtime.InteropServices;'
+        'public class TR{[DllImport("ntdll.dll")]public static extern int NtSetTimerResolution(int dr,bool sr,ref int cr);}\';'
+        '[TR]::NtSetTimerResolution(5000,$true,[ref]0)"', timeout=8)
+    ok()
+
+    step("Disabling CPU core parking")
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerSettings\\'
+        '54533251-82be-4824-96c1-47b60b740d00\\0cc5b647-c1df-4637-891a-dec35c318583" '
+        '/v ValueMax /t REG_DWORD /d 0 /f', timeout=5)
+    run('powercfg /SETACVALUEINDEX SCHEME_CURRENT '
+        '54533251-82be-4824-96c1-47b60b740d00 '
+        '0cc5b647-c1df-4637-891a-dec35c318583 0', timeout=6)
+    run('powercfg /SETACVALUEINDEX SCHEME_CURRENT '
+        '54533251-82be-4824-96c1-47b60b740d00 '
+        'ea062031-0e34-4ff1-9b6d-eb1059334028 100', timeout=6)
+    ok()
+
+    step("Disabling CPU heterogeneous scheduling")
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerSettings\\'
+        '54533251-82be-4824-96c1-47b60b740d00\\2bfc2888-f606-4b1b-a9c1-5dfdb0a08c50" '
+        '/v ValueMax /t REG_DWORD /d 0 /f', timeout=5)
+    ok()
+
+    step("Locking CPU to max frequency")
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100", timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100", timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",     timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",    timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFEPP 0",           timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISABLE 1",       timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR LATENCYHINTPERF1 100",timeout=6)
+    ok()
+
+    step("Disabling HPET system timer")
+    run("bcdedit /set useplatformclock false",   timeout=6)
+    run("bcdedit /set disabledynamictick yes",   timeout=6)
+    run("bcdedit /set tscsyncpolicy enhanced",   timeout=6)
+    run("bcdedit /set x2apicpolicy enable",      timeout=6)
+    ok()
+
+    step("Stripping GPU driver telemetry overhead")
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\NvControlPanel2\\Client" '
+        '/v OptInOrOutPreference /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
+        '/v EnableRID44231 /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
+        '/v EnableRID64640 /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
+        '/v EnableRID66610 /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\nvlddmkm\\Global\\NVTweak" '
+        '/v NvCplDisableD3dAA /t REG_DWORD /d 1 /f', timeout=4)
+    ok()
+
+    step("Forcing GPU preemption and low-latency pipeline")
+    reg(
+        "Windows Registry Editor Version 5.00\r\n"
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers]\r\n"
+        '"HwSchMode"=dword:00000002\r\n'
+        '"TdrDelay"=dword:0000001e\r\n'
+        '"TdrDdiDelay"=dword:0000001e\r\n'
+        '"TdrLevel"=dword:00000003\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\Scheduler]\r\n"
+        '"EnablePreemption"=dword:00000001\r\n'
+        '"VsyncIdleTimeout"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
+        '"NetworkThrottlingIndex"=dword:ffffffff\r\n'
+        '"SystemResponsiveness"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
+        '"GPU Priority"=dword:00000008\r\n'
+        '"Priority"=dword:00000006\r\n'
+        '"Scheduling Category"="High"\r\n'
+        '"SFIO Priority"="High"\r\n'
+        '"Background Only"="False"\r\n'
+        '"Clock Rate"=dword:00002710\r\n'
+        "\r\n"
+    )
+    ok()
+
+    step("Disabling GameBar, DVR and overlays")
+    reg(
+        "Windows Registry Editor Version 5.00\r\n"
+        "\r\n"
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR]\r\n"
+        '"AppCaptureEnabled"=dword:00000000\r\n'
+        '"HistoricalCaptureEnabled"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_CURRENT_USER\\System\\GameConfigStore]\r\n"
+        '"GameDVR_Enabled"=dword:00000000\r\n'
+        '"GameDVR_FSEBehaviorMode"=dword:00000002\r\n'
+        '"GameDVR_DXGIHonorFSEWindowsCompatible"=dword:00000001\r\n'
+        '"GameDVR_HonorUserFSEBehaviorMode"=dword:00000001\r\n'
+        '"GameDVR_EFSEFeatureFlags"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR]\r\n"
+        '"AllowGameDVR"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\GameBar]\r\n"
+        '"AllowAutoGameMode"=dword:00000001\r\n'
+        '"AutoGameModeEnabled"=dword:00000001\r\n'
+        '"UseNexusForGameBarEnabled"=dword:00000000\r\n'
+        "\r\n"
+    )
+    ok()
+
+    step("Optimizing NTFS and I/O scheduler for game assets")
+    run("fsutil behavior set disablelastaccess 1",  timeout=5)
+    run("fsutil behavior set disable8dot3 1",       timeout=5)
+    run("fsutil behavior set memoryusage 2",        timeout=5)
+    run("fsutil behavior set mftzone 2",            timeout=5)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" '
+        '/v NtfsDisableLastAccessUpdate /t REG_DWORD /d 1 /f', timeout=4)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" '
+        '/v NtfsMemoryUsage /t REG_DWORD /d 2 /f', timeout=4)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management" '
+        '/v LargeSystemCache /t REG_DWORD /d 0 /f', timeout=4)
+    ok()
+
+    step("Flushing standby RAM and zeroing working sets")
+    if HAS_PSUTIL:
+        SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
+        try:
+            k32 = ctypes.windll.kernel32
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    n = (proc.info["name"] or "").lower()
+                    if n in SKIP:
+                        continue
+                    h = k32.OpenProcess(0x0400 | 0x0100, False, proc.info["pid"])
+                    if h:
+                        k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
+                        k32.CloseHandle(h)
+                except:
+                    pass
+        except:
+            pass
+    ps("[System.GC]::Collect(2,[System.GCCollectionMode]::Forced,$true,$true);"
+       "[System.GC]::WaitForPendingFinalizers();"
+       "[System.GC]::Collect(2,[System.GCCollectionMode]::Forced,$true,$true)", timeout=10)
+    ok()
+
+    step("Boosting IRQ priority for GPU and network")
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" '
+        '/v IRQ8Priority /t REG_DWORD /d 1 /f', timeout=4)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" '
+        '/v IRQ16Priority /t REG_DWORD /d 1 /f', timeout=4)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" '
+        '/v Win32PrioritySeparation /t REG_DWORD /d 38 /f', timeout=4)
+    ok()
+
+    step("Disabling power throttling for all processes")
+    reg(
+        "Windows Registry Editor Version 5.00\r\n"
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling]\r\n"
+        '"PowerThrottlingOff"=dword:00000001\r\n'
+        "\r\n"
+    )
+    ps('$p = Get-Process | Where-Object {$_.PriorityClass}; '
+       'foreach ($x in $p) { try { '
+       '$x.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::High '
+       '} catch {} }', timeout=12)
+    ok()
+
+    step("Applying network low-latency tweaks for gaming")
+    run("netsh int tcp set global autotuninglevel=highlyrestricted", timeout=6)
+    run("netsh int tcp set global rss=enabled",                      timeout=6)
+    run("netsh int tcp set global chimney=disabled",                 timeout=6)
+    run('reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Psched" '
+        '/v NonBestEffortLimit /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile" '
+        '/v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f', timeout=4)
+    run("ipconfig /flushdns", timeout=5)
+    ok()
+
+    step("Elevating running game processes to High priority")
+    if HAS_PSUTIL:
+        game_procs = {
+            "cs2.exe","csgo.exe","valorant.exe","fortnite.exe","r5apex.exe",
+            "eldenring.exe","witcher3.exe","cyberpunk2077.exe","rainbowsix.exe",
+            "overwatch.exe","gta5.exe","rocketleague.exe","minecraft.exe","javaw.exe",
+            "tslgame.exe","bf4.exe","bf2042.exe","destiny2.exe","cod.exe",
+            "warzone.exe","escapefromtarkov.exe","halo_infinite.exe",
+            "starfield.exe","dota2.exe","leagueclient.exe","league of legends.exe",
+            "r5apex.exe","squadgame.exe","arma3.exe","tarkov.exe","readyornot.exe",
+        }
+        boosted = 0
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                pname = (proc.info["name"] or "").lower()
+                if pname in game_procs:
+                    proc.nice(psutil.HIGH_PRIORITY_CLASS)
+                    try:
+                        proc.ionice(psutil.IOPRIO_HIGH)
+                    except:
+                        pass
+                    boosted += 1
+            except:
+                pass
+        if boosted:
+            print(f"\n    {boosted} game process(es) set to High priority", end="")
+    ok()
+
+
 def gamerun():
     print()
     print("  Preparing gaming mode...")
@@ -1822,6 +2041,7 @@ def gamerun():
     gram()
     gcpu()
     gnet()
+    fps()
     print()
     print("  Gaming mode active! Launch your game now.")
     print("  Tip: Run your game as Administrator for best results.")
@@ -1883,7 +2103,7 @@ def main():
         input("  Press Enter to exit...")
         return
 
-    reboot()
+    after()
 
 if __name__ == "__main__":
     main()
