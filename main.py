@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.3.1",
+    r"         Hex-win10 Tweaker v1.4",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
@@ -380,13 +380,13 @@ def ram():
 def power():
     step("Boosting CPU and power plan")
     HP = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
-    run(f"powercfg /setactive {HP}", timeout=8)
-    run(f"powercfg -duplicatescheme {HP}", timeout=8)
-    run(f"powercfg /setactive {HP}", timeout=8)
+    run(f"powercfg /setactive {HP}",                                                       timeout=8)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_USB USBSELECTIVESUSPEND 0",         timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100",     timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5",       timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",     timeout=6)
-    run("powercfg -h off", timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",         timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",        timeout=6)
+    run("powercfg -h off",                                                                 timeout=6)
     ok()
 
 def gaming():
@@ -580,7 +580,7 @@ def storage():
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_detect],
         timeout=10
     )
-    dtype = out.strip().upper() if ok else ""
+    dtype = out.strip().upper() if r else ""
     if "SSD" in dtype or "NVM" in dtype:
         run("fsutil behavior set DisableDeleteNotify 0",                                      timeout=5)
         run("fsutil behavior set disable8dot3 1",                                             timeout=5)
@@ -1839,19 +1839,12 @@ def fps():
         'ea062031-0e34-4ff1-9b6d-eb1059334028 100', timeout=6)
     ok()
 
-    step("Disabling CPU heterogeneous scheduling")
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerSettings\\'
-        '54533251-82be-4824-96c1-47b60b740d00\\2bfc2888-f606-4b1b-a9c1-5dfdb0a08c50" '
-        '/v ValueMax /t REG_DWORD /d 0 /f', timeout=5)
-    ok()
-
-    step("Locking CPU to max frequency")
+    step("Locking CPU to max frequency during gaming")
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100", timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100", timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",     timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",    timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFEPP 0",           timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISABLE 1",       timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR LATENCYHINTPERF1 100",timeout=6)
     ok()
 
@@ -1930,19 +1923,6 @@ def fps():
     )
     ok()
 
-    step("Optimizing NTFS and I/O scheduler for game assets")
-    run("fsutil behavior set disablelastaccess 1",  timeout=5)
-    run("fsutil behavior set disable8dot3 1",       timeout=5)
-    run("fsutil behavior set memoryusage 2",        timeout=5)
-    run("fsutil behavior set mftzone 2",            timeout=5)
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" '
-        '/v NtfsDisableLastAccessUpdate /t REG_DWORD /d 1 /f', timeout=4)
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" '
-        '/v NtfsMemoryUsage /t REG_DWORD /d 2 /f', timeout=4)
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management" '
-        '/v LargeSystemCache /t REG_DWORD /d 0 /f', timeout=4)
-    ok()
-
     step("Flushing standby RAM and zeroing working sets")
     if HAS_PSUTIL:
         SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
@@ -1966,16 +1946,7 @@ def fps():
        "[System.GC]::Collect(2,[System.GCCollectionMode]::Forced,$true,$true)", timeout=10)
     ok()
 
-    step("Boosting IRQ priority for GPU and network")
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" '
-        '/v IRQ8Priority /t REG_DWORD /d 1 /f', timeout=4)
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" '
-        '/v IRQ16Priority /t REG_DWORD /d 1 /f', timeout=4)
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" '
-        '/v Win32PrioritySeparation /t REG_DWORD /d 38 /f', timeout=4)
-    ok()
-
-    step("Disabling power throttling for all processes")
+    step("Disabling power throttling globally")
     reg(
         "Windows Registry Editor Version 5.00\r\n"
         "\r\n"
@@ -1983,10 +1954,6 @@ def fps():
         '"PowerThrottlingOff"=dword:00000001\r\n'
         "\r\n"
     )
-    ps('$p = Get-Process | Where-Object {$_.PriorityClass}; '
-       'foreach ($x in $p) { try { '
-       '$x.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::High '
-       '} catch {} }', timeout=12)
     ok()
 
     step("Applying network low-latency tweaks for gaming")
@@ -1995,8 +1962,6 @@ def fps():
     run("netsh int tcp set global chimney=disabled",                 timeout=6)
     run('reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Psched" '
         '/v NonBestEffortLimit /t REG_DWORD /d 0 /f', timeout=4)
-    run('reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile" '
-        '/v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f', timeout=4)
     run("ipconfig /flushdns", timeout=5)
     ok()
 
@@ -2009,7 +1974,7 @@ def fps():
             "tslgame.exe","bf4.exe","bf2042.exe","destiny2.exe","cod.exe",
             "warzone.exe","escapefromtarkov.exe","halo_infinite.exe",
             "starfield.exe","dota2.exe","leagueclient.exe","league of legends.exe",
-            "r5apex.exe","squadgame.exe","arma3.exe","tarkov.exe","readyornot.exe",
+            "squadgame.exe","arma3.exe","readyornot.exe",
         }
         boosted = 0
         for proc in psutil.process_iter(["pid", "name"]):
@@ -2025,7 +1990,7 @@ def fps():
             except:
                 pass
         if boosted:
-            print(f"\n    {boosted} game process(es) set to High priority", end="")
+            print(f"\n    {boosted} game process(es) prioritized", end="")
     ok()
 
 
