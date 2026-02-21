@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.7.9",
+    r"         Hex-win10 Tweaker v1.2",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
@@ -66,7 +66,6 @@ def rout(c, timeout=10):
         return False, ""
 
 def ps(script, timeout=12):
-    """Run a PowerShell script string safely — no quote escaping issues."""
     try:
         subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
@@ -78,12 +77,11 @@ def ps(script, timeout=12):
         pass
 
 def reg(content):
-    """Write a .reg file and silently import it. Fully hardened against temp-file failures."""
     tmp_path = None
     try:
         fd, tmp_path = tempfile.mkstemp(suffix=".reg")
         with os.fdopen(fd, "wb") as f:
-            f.write(b"\xff\xfe")  # UTF-16 LE BOM
+            f.write(b"\xff\xfe")
             f.write(content.encode("utf-16-le"))
         subprocess.run(
             f'regedit /s "{tmp_path}"',
@@ -101,7 +99,6 @@ def reg(content):
                 pass
 
 def svcoff(names):
-    """Stop and disable services. Fire all stops simultaneously, wait, then disable."""
     for n in names:
         try:
             subprocess.Popen(
@@ -143,6 +140,23 @@ def step(msg):
 
 def ok():
     print("done!")
+
+def reboot():
+    import msvcrt
+    secs = 30
+    print()
+    print(f"  Restarting in {secs}s... Press any key to cancel.")
+    for i in range(secs, 0, -1):
+        print(f"\r  Restarting in {i}s... Press any key to cancel.  ", end="", flush=True)
+        for _ in range(10):
+            if msvcrt.kbhit():
+                msvcrt.getch()
+                print(f"\r  Restart cancelled. Press Enter to exit.           ")
+                input()
+                return
+            time.sleep(0.1)
+    print(f"\r  Restarting now...                                   ")
+    run("shutdown /r /t 0")
 
 def specs():
     print("  System:")
@@ -301,13 +315,10 @@ def browsers():
 
 def ram():
     step("Optimizing RAM")
-
     total_gb = gb(psutil.virtual_memory().total) if HAS_PSUTIL else 8
-
     mm       = r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
     pf_param = mm + r"\PrefetchParameters"
     sp       = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
-
     for key, name, val in [
         (mm,       "DisablePagingExecutive", 1),
         (mm,       "LargeSystemCache",       0),
@@ -320,7 +331,6 @@ def ram():
         (sp,       "SystemResponsiveness",   0),
     ]:
         run(f'reg add "{key}" /v "{name}" /t REG_DWORD /d {val} /f', timeout=5)
-
     if total_gb <= 8:
         pf_init, pf_max = 8192, 16384
     elif total_gb <= 16:
@@ -329,7 +339,6 @@ def ram():
         pf_init, pf_max = 2048, 4096
     else:
         pf_init, pf_max = 1024, 2048
-
     ps_script = (
         "$cs = Get-WmiObject Win32_ComputerSystem; "
         "$cs.AutomaticManagedPagefile = $false; "
@@ -342,7 +351,6 @@ def ram():
         "}"
     )
     ps(ps_script, timeout=12)
-
     if HAS_PSUTIL:
         try:
             k32  = ctypes.windll.kernel32
@@ -363,7 +371,6 @@ def ram():
                     pass
         except:
             pass
-
     ok()
 
 def power():
@@ -1872,17 +1879,11 @@ def main():
         return
 
     print()
-    if choice in ("5", "6"):
+    if choice == "5":
         input("  Press Enter to exit...")
-    else:
-        r = input("  Restart now? (y/N): ").strip().lower()
-        if r == "y":
-            for i in range(5, 0, -1):
-                print(f"  Restarting in {i}...", end="\r")
-                time.sleep(1)
-            run("shutdown /r /t 0")
-        else:
-            input("  Press Enter to exit...")
+        return
+
+    reboot()
 
 if __name__ == "__main__":
     main()
