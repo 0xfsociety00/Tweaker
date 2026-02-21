@@ -1710,7 +1710,6 @@ def sysfix():
 
     print()
     print("  System issue resolver complete!")
-    print("  A restart is recommended to apply all fixes.")
 
 
 def repairrun():
@@ -1753,9 +1752,9 @@ def tweaker():
     netboost()
     procs()
     print()
-    print("  All done! Restart your PC for full effect.")
+    print("  All done!")
     if nvcheck():
-        print("  Set NVIDIA Control Panel -> Prefer Maximum Performance.")
+        print("  Tip: Set NVIDIA Control Panel -> Prefer Maximum Performance.")
 
 def netrun():
     print()
@@ -1769,7 +1768,7 @@ def netrun():
     qos()
     netreset()
     print()
-    print("  Net boost complete! Restart your PC for full effect.")
+    print("  Net boost complete!")
 
 def gpurun():
     print()
@@ -1814,7 +1813,6 @@ def disprun():
     dgpu_disp()
     print()
     print("  Display tuning complete!")
-    print("  Tip: Display Settings -> Advanced display -> verify your refresh rate is active.")
 
 def fps():
     step("Setting timer resolution to 0.5ms")
@@ -2099,10 +2097,6 @@ def main():
         return
 
     print()
-    if choice == "5":
-        input("  Press Enter to exit...")
-        return
-
     after()
 
 if __name__ == "__main__":
