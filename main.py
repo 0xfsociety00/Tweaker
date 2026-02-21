@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.5.2",
+    r"         Hex-win10 Tweaker v1.3",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
@@ -42,7 +42,6 @@ def admin():
     except:
         return False
 
-# single blocking call, no shell=True unless needed
 def run(c, timeout=12):
     try:
         subprocess.run(
@@ -66,11 +65,10 @@ def rout(c, timeout=10):
     except:
         return False, ""
 
-def ps(script, timeout=15):
+def ps(script, timeout=12):
     try:
         subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive",
-             "-WindowStyle", "Hidden", "-Command", script],
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=timeout
@@ -100,14 +98,26 @@ def reg(content):
             except:
                 pass
 
-# serialized one-at-a-time, no Popen flooding
 def svcoff(names):
     for n in names:
-        run(f"sc stop {n}", timeout=6)
-        time.sleep(0.1)
+        try:
+            subprocess.Popen(
+                ["sc", "stop", n],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except:
+            pass
+    time.sleep(2)
     for n in names:
-        run(f'sc config {n} start= disabled', timeout=6)
-        time.sleep(0.05)
+        try:
+            subprocess.Popen(
+                ["sc", "config", n, "start=", "disabled"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except:
+            pass
 
 def gb(b):
     return round(b / 1024 / 1024 / 1024, 1)
@@ -141,6 +151,7 @@ def after():
         print()
         run("shutdown /r /t 0")
         return
+
     print()
     print("  [1] Exit")
     print("  [2] Restart tool")
@@ -156,8 +167,8 @@ def specs():
     cpu = platform.processor() or platform.machine() or "Unknown"
     print(f"    CPU     : {cpu}")
     if HAS_PSUTIL:
-        vm = psutil.virtual_memory()
-        print(f"    RAM     : {gb(vm.total)} GB  |  {gb(vm.available)} GB free  ({round(vm.percent)}% used)")
+        ram = psutil.virtual_memory()
+        print(f"    RAM     : {gb(ram.total)} GB  |  {gb(ram.available)} GB free  ({round(ram.percent)}% used)")
         try:
             disk = psutil.disk_usage("C:\\")
             print(f"    Drive C : {gb(disk.total)} GB  |  {gb(disk.free)} GB free")
@@ -217,7 +228,7 @@ def nvcheck():
         "nvidia-smi --query-gpu=name --format=csv,noheader,nounits",
         timeout=4
     )
-    return r and bool(out)
+    return ok and bool(out)
 
 def amdcheck():
     r, out = rout("wmic path win32_VideoController get name", timeout=6)
@@ -229,7 +240,7 @@ def bloat():
         ok()
         return
     targets = {
-        "msedge.exe","microsoftedge.exe","microsoftedgeupdateml.exe",
+        "msedge.exe","microsoftedge.exe","microsoftedgeupdate.exe",
         "searchindexer.exe","searchapp.exe","searchui.exe",
         "onedrive.exe","onedrivesetup.exe",
         "skypeapp.exe","skype.exe",
@@ -243,15 +254,11 @@ def bloat():
         "speechruntime.exe","tabtip.exe","tabtip32.exe",
     }
     killed = 0
-    # snapshot first, then kill — avoids iterator thrash
-    procs = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-    for pid, name in procs:
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
-            if name and name.lower() in targets:
-                p = psutil.Process(pid)
-                p.kill()
+            if proc.info["name"] and proc.info["name"].lower() in targets:
+                proc.kill()
                 killed += 1
-                time.sleep(0.05)
         except:
             pass
     ok()
@@ -263,7 +270,7 @@ def temp():
     lad = os.environ.get("LOCALAPPDATA", "")
     win = os.environ.get("SystemRoot", r"C:\Windows")
     apd = os.environ.get("APPDATA", "")
-    dirs = [
+    dirs = {
         os.environ.get("TEMP", ""),
         os.environ.get("TMP", ""),
         os.path.join(win, "Temp"),
@@ -275,7 +282,7 @@ def temp():
         os.path.join(lad, "CrashDumps"),
         os.path.join(apd, "Microsoft", "Windows", "Recent"),
         os.path.join(win, "Logs"),
-    ]
+    }
     for d in dirs:
         if d and os.path.isdir(d):
             wipe(d)
@@ -316,21 +323,18 @@ def ram():
     mm       = r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
     pf_param = mm + r"\PrefetchParameters"
     sp       = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
-
-    tweaks = [
-        (mm,       "DisablePagingExecutive", 0),
+    for key, name, val in [
+        (mm,       "DisablePagingExecutive", 1),
         (mm,       "LargeSystemCache",       0),
-        (mm,       "IoPageLockLimit",        0),
-        (mm,       "SecondLevelDataCache",   0),
-        (mm,       "PoolUsageMaximum",       80),
+        (mm,       "IoPageLockLimit",        983040),
+        (mm,       "SecondLevelDataCache",   512),
+        (mm,       "PoolUsageMaximum",       60),
         (mm,       "PagedPoolSize",          0),
         (pf_param, "EnablePrefetcher",       3),
         (pf_param, "EnableSuperfetch",       3),
-        (sp,       "SystemResponsiveness",   20),
-    ]
-    for key, name, val in tweaks:
+        (sp,       "SystemResponsiveness",   0),
+    ]:
         run(f'reg add "{key}" /v "{name}" /t REG_DWORD /d {val} /f', timeout=5)
-
     if total_gb <= 8:
         pf_init, pf_max = 8192, 16384
     elif total_gb <= 16:
@@ -339,35 +343,50 @@ def ram():
         pf_init, pf_max = 2048, 4096
     else:
         pf_init, pf_max = 1024, 2048
-
-    ps(
+    ps_script = (
         "$cs = Get-WmiObject Win32_ComputerSystem; "
         "$cs.AutomaticManagedPagefile = $false; "
         "$cs.Put() | Out-Null; "
         "$pf = Get-WmiObject -Class Win32_PageFileSetting -ErrorAction SilentlyContinue; "
         "if ($pf) { "
-        f"  $pf.InitialSize = {pf_init}; "
-        f"  $pf.MaximumSize = {pf_max}; "
+        "  $pf.InitialSize = " + str(pf_init) + "; "
+        "  $pf.MaximumSize = " + str(pf_max) + "; "
         "  $pf.Put() | Out-Null "
-        "}",
-        timeout=12
+        "}"
     )
+    ps(ps_script, timeout=12)
+    if HAS_PSUTIL:
+        try:
+            k32  = ctypes.windll.kernel32
+            SKIP = {
+                "system", "registry", "smss.exe", "csrss.exe",
+                "wininit.exe", "services.exe", "lsass.exe",
+            }
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    n = (proc.info["name"] or "").lower()
+                    if n in SKIP:
+                        continue
+                    h = k32.OpenProcess(0x0100, False, proc.info["pid"])
+                    if h:
+                        k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
+                        k32.CloseHandle(h)
+                except:
+                    pass
+        except:
+            pass
     ok()
 
 def power():
     step("Boosting CPU and power plan")
     HP = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
-    cmds = [
-        f"powercfg /setactive {HP}",
-        "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_USB USBSELECTIVESUSPEND 0",
-        "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 0",
-        "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",
-        "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",
-        "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",
-        "powercfg -h off",
-    ]
-    for c in cmds:
-        run(c, timeout=6)
+    run(f"powercfg /setactive {HP}",                                                       timeout=8)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_USB USBSELECTIVESUSPEND 0",         timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5",       timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",     timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",         timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",        timeout=6)
+    run("powercfg -h off",                                                                 timeout=6)
     ok()
 
 def gaming():
@@ -395,11 +414,11 @@ def gaming():
         '"HwSchMode"=dword:00000002\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl]\r\n"
-        '"Win32PrioritySeparation"=dword:00000028\r\n'
+        '"Win32PrioritySeparation"=dword:00000026\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
         '"NetworkThrottlingIndex"=dword:ffffffff\r\n'
-        '"SystemResponsiveness"=dword:00000014\r\n'
+        '"SystemResponsiveness"=dword:00000000\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
         '"GPU Priority"=dword:00000008\r\n'
@@ -412,7 +431,7 @@ def gaming():
     ok()
 
 def gpudrv():
-    step("Optimizing GPU driver")
+    step("Optimizing GPU")
     r, out = rout(
         "nvidia-smi --query-gpu=name --format=csv,noheader,nounits",
         timeout=5
@@ -432,8 +451,8 @@ def gpudrv():
         if gen >= 20:
             run("nvidia-smi --persistence-mode=1", timeout=6)
     gd = r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"
-    for nm, val in [("HwSchMode", 2), ("TdrDelay", 10), ("TdrDdiDelay", 10)]:
-        run(f'reg add "{gd}" /v {nm} /t REG_DWORD /d {val} /f', timeout=5)
+    for name, val in [("HwSchMode", 2), ("TdrDelay", 10), ("TdrDdiDelay", 10)]:
+        run(f'reg add "{gd}" /v {name} /t REG_DWORD /d {val} /f', timeout=5)
     ok()
 
 def visual():
@@ -509,14 +528,13 @@ def startup():
         '"Cortana"=-\r\n'
         "\r\n"
     )
-    tasks = [
+    for t in [
         "OneDrive",
         "MicrosoftEdgeUpdateTaskMachineCore",
         "MicrosoftEdgeUpdateTaskMachineUA",
         "GoogleUpdateTaskMachineCore",
         "GoogleUpdateTaskMachineUA",
-    ]
-    for t in tasks:
+    ]:
         run(f'schtasks /Change /TN "{t}" /Disable', timeout=4)
     ok()
 
@@ -546,9 +564,7 @@ def telem():
         '"DisableCloudOptimizedContent"=dword:00000001\r\n'
         "\r\n"
     )
-    # stop in small chunks, not all at once
-    svcoff(["DiagTrack", "dmwappushservice"])
-    svcoff(["WerSvc", "PcaSvc"])
+    svcoff(["DiagTrack", "dmwappushservice", "WerSvc", "PcaSvc"])
     ok()
 
 def storage():
@@ -560,15 +576,16 @@ def storage():
         "} catch { 'Unknown' }"
     )
     r, out = rout(
-        f'powershell -NoProfile -NonInteractive -Command "{ps_detect}"',
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_detect],
         timeout=10
     )
     dtype = out.strip().upper() if r else ""
     if "SSD" in dtype or "NVM" in dtype:
-        run("fsutil behavior set DisableDeleteNotify 0",  timeout=5)
-        run("fsutil behavior set disable8dot3 1",         timeout=5)
-        run("fsutil behavior set encryptpagingfile 0",    timeout=5)
-        run('schtasks /Change /TN "Microsoft\\Windows\\Defrag\\ScheduledDefrag" /Disable', timeout=5)
+        run("fsutil behavior set DisableDeleteNotify 0",                                      timeout=5)
+        run("fsutil behavior set disable8dot3 1",                                             timeout=5)
+        run("fsutil behavior set encryptpagingfile 0",                                        timeout=5)
+        run('schtasks /Change /TN "Microsoft\\Windows\\Defrag\\ScheduledDefrag" /Disable',   timeout=5)
+        svcoff(["SysMain"])
     else:
         run("sc config SysMain start= auto", timeout=5)
         run("sc start SysMain",              timeout=5)
@@ -576,14 +593,13 @@ def storage():
 
 def svcs():
     step("Disabling unnecessary services")
-    # chunked to avoid spawning 20+ sc processes at once
-    chunk1 = ["Fax", "WMPNetworkSvc", "RemoteRegistry", "MapsBroker", "PhoneSvc"]
-    chunk2 = ["XblGameSave", "XblAuthManager", "lfsvc", "wisvc", "TabletInputService"]
-    chunk3 = ["WbioSrvc", "icssvc", "RetailDemo", "DusmSvc", "WalletService"]
-    chunk4 = ["MessagingService", "PimIndexMaintenanceSvc", "OneSyncSvc"]
-    chunk5 = ["UnistoreSvc", "UserDataSvc", "diagsvc", "wercplsupport"]
-    for chunk in [chunk1, chunk2, chunk3, chunk4, chunk5]:
-        svcoff(chunk)
+    svcoff([
+        "Fax", "WMPNetworkSvc", "RemoteRegistry", "MapsBroker", "PhoneSvc",
+        "XblGameSave", "XblAuthManager", "lfsvc", "wisvc", "TabletInputService",
+        "WbioSrvc", "icssvc", "RetailDemo", "DusmSvc", "WalletService",
+        "MessagingService", "PimIndexMaintenanceSvc", "OneSyncSvc",
+        "UnistoreSvc", "UserDataSvc", "diagsvc", "wercplsupport",
+    ])
     ok()
 
 def beast():
@@ -596,12 +612,12 @@ def beast():
         '"NtfsMemoryUsage"=dword:00000002\r\n'
         "\r\n"
         "[HKEY_CURRENT_USER\\Control Panel\\Desktop]\r\n"
-        '"AutoEndTasks"="0"\r\n'
-        '"HungAppTimeout"="5000"\r\n'
-        '"WaitToKillAppTimeout"="5000"\r\n'
+        '"AutoEndTasks"="1"\r\n'
+        '"HungAppTimeout"="1000"\r\n'
+        '"WaitToKillAppTimeout"="2000"\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control]\r\n"
-        '"WaitToKillServiceTimeout"="5000"\r\n'
+        '"WaitToKillServiceTimeout"="2000"\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters]\r\n"
         '"IRPStackSize"=dword:00000014\r\n'
@@ -625,25 +641,22 @@ def beast():
 
 def netboost():
     step("Boosting network")
-    run("ipconfig /flushdns",                              timeout=5)
-    # sequential, not simultaneous
-    for c in [
-        "netsh int tcp set global autotuninglevel=normal",
-        "netsh int tcp set global chimney=disabled",
-        "netsh int tcp set global rss=enabled",
-        "netsh int tcp set global netdma=enabled",
-    ]:
-        run(c, timeout=6)
-    # reg writes in interface subkeys — do them via powershell batch to avoid spawning many reg processes
-    ps(
-        "$ifaces = (reg query 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' 2>$null) -split '\\r?\\n' | Where-Object { $_ -match 'HKEY' }; "
-        "foreach ($k in $ifaces) { "
-        "  reg add \"$k\" /v TcpAckFrequency /t REG_DWORD /d 1 /f 2>$null | Out-Null; "
-        "  reg add \"$k\" /v TCPNoDelay /t REG_DWORD /d 1 /f 2>$null | Out-Null; "
-        "  reg add \"$k\" /v TcpDelAckTicks /t REG_DWORD /d 0 /f 2>$null | Out-Null "
-        "}",
-        timeout=20
+    run("ipconfig /flushdns",                                   timeout=5)
+    run("netsh int tcp set global autotuninglevel=normal",      timeout=6)
+    run("netsh int tcp set global chimney=disabled",            timeout=6)
+    run("netsh int tcp set global rss=enabled",                 timeout=6)
+    run("netsh int tcp set global netdma=enabled",              timeout=6)
+    r, out = rout(
+        r'reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"',
+        timeout=6
     )
+    if r and out:
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("HKEY"):
+                run(f'reg add "{line}" /v TcpAckFrequency /t REG_DWORD /d 1 /f', timeout=4)
+                run(f'reg add "{line}" /v TCPNoDelay      /t REG_DWORD /d 1 /f', timeout=4)
+                run(f'reg add "{line}" /v TcpDelAckTicks  /t REG_DWORD /d 0 /f', timeout=4)
     ok()
 
 def procs():
@@ -660,11 +673,11 @@ def procs():
         "starfield.exe","dota2.exe","leagueclient.exe",
     }
     n = 0
-    snapshot = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-    for pid, name in snapshot:
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
-            if name and name.lower() in targets:
-                psutil.Process(pid).nice(psutil.HIGH_PRIORITY_CLASS)
+            pname = proc.info["name"]
+            if pname and pname.lower() in targets:
+                proc.nice(psutil.HIGH_PRIORITY_CLASS)
                 n += 1
         except:
             pass
@@ -674,14 +687,17 @@ def procs():
 
 def flush():
     step("Flushing network caches")
-    for c in ["ipconfig /flushdns", "arp -d *", "nbtstat -R", "nbtstat -RR", "ipconfig /registerdns"]:
-        run(c, timeout=6)
+    run("ipconfig /flushdns",    timeout=5)
+    run("arp -d *",              timeout=5)
+    run("nbtstat -R",            timeout=6)
+    run("nbtstat -RR",           timeout=6)
+    run("ipconfig /registerdns", timeout=6)
     ps("Clear-DnsClientCache -ErrorAction SilentlyContinue", timeout=8)
     ok()
 
 def tcpopt():
     step("Optimizing TCP/IP stack")
-    cmds = [
+    for c in [
         "netsh int tcp set global autotuninglevel=highlyrestricted",
         "netsh int tcp set global congestionprovider=ctcp",
         "netsh int tcp set global ecncapability=enabled",
@@ -692,11 +708,10 @@ def tcpopt():
         "netsh int tcp set global netdma=enabled",
         "netsh int tcp set global dca=enabled",
         "netsh int udp set global uro=enabled",
-    ]
-    for c in cmds:
+    ]:
         run(c, timeout=6)
     tcp = r"HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
-    tweaks = [
+    for name, val in [
         ("TcpTimedWaitDelay",         30),
         ("MaxUserPort",               65534),
         ("TcpMaxDataRetransmissions", 5),
@@ -710,38 +725,45 @@ def tcpopt():
         ("NumTcbTablePartitions",     4),
         ("MaxFreeTcbs",               65536),
         ("MaxHashTableSize",          65536),
-    ]
-    for nm, val in tweaks:
-        run(f'reg add "{tcp}" /v "{nm}" /t REG_DWORD /d {val} /f', timeout=4)
+    ]:
+        run(f'reg add "{tcp}" /v "{name}" /t REG_DWORD /d {val} /f', timeout=4)
     ok()
 
 def adapters():
     step("Tuning network adapters")
-    ps(
-        "$ifaces = (reg query 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' 2>$null) -split '\\r?\\n' | Where-Object { $_ -match 'HKEY' }; "
-        "foreach ($k in $ifaces) { "
-        "  reg add \"$k\" /v TcpAckFrequency /t REG_DWORD /d 1 /f 2>$null | Out-Null; "
-        "  reg add \"$k\" /v TCPNoDelay /t REG_DWORD /d 1 /f 2>$null | Out-Null; "
-        "  reg add \"$k\" /v TcpDelAckTicks /t REG_DWORD /d 0 /f 2>$null | Out-Null; "
-        "  reg add \"$k\" /v TcpInitialRTT /t REG_DWORD /d 3 /f 2>$null | Out-Null "
-        "}",
-        timeout=20
+    r, out = rout(
+        r'reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"',
+        timeout=6
     )
+    if r and out:
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("HKEY"):
+                run(f'reg add "{line}" /v TcpAckFrequency /t REG_DWORD /d 1 /f', timeout=4)
+                run(f'reg add "{line}" /v TCPNoDelay      /t REG_DWORD /d 1 /f', timeout=4)
+                run(f'reg add "{line}" /v TcpDelAckTicks  /t REG_DWORD /d 0 /f', timeout=4)
+                run(f'reg add "{line}" /v TcpInitialRTT   /t REG_DWORD /d 3 /f', timeout=4)
     ok()
 
 def wifi():
     step("Optimizing WiFi")
-    adps = wifiadp()
-    for adapter in adps:
+    adapters = wifiadp()
+    for adapter in adapters:
         safe = adapter.replace("'","").replace('"',"")
+        for kw, val in [
+            ("RoamAggressiveness",   "1"),
+            ("*TransmitBuffers",     "1024"),
+            ("*ReceiveBuffers",      "1024"),
+            ("*InterruptModeration", "0"),
+        ]:
+            ps(
+                f"Set-NetAdapterAdvancedProperty -Name '{safe}' "
+                f"-RegistryKeyword '{kw}' -RegistryValue {val} -ErrorAction SilentlyContinue",
+                timeout=8
+            )
         ps(
-            f"$n = '{safe}'; "
-            "Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword 'RoamAggressiveness' -RegistryValue 1 -ErrorAction SilentlyContinue; "
-            "Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*TransmitBuffers' -RegistryValue 1024 -ErrorAction SilentlyContinue; "
-            "Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*ReceiveBuffers' -RegistryValue 1024 -ErrorAction SilentlyContinue; "
-            "Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*InterruptModeration' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-            "Disable-NetAdapterPowerManagement -Name $n -ErrorAction SilentlyContinue",
-            timeout=10
+            f"Disable-NetAdapterPowerManagement -Name '{safe}' -ErrorAction SilentlyContinue",
+            timeout=8
         )
     run(
         r'reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy" '
@@ -789,23 +811,20 @@ def qos():
         r'/v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f',
         timeout=4
     )
-    run("netsh int ip set global taskoffload=enabled",     timeout=6)
-    run("netsh int ip set global neighborcachelimit=4096", timeout=6)
-    run("netsh int ip set global routecachelimit=4096",    timeout=6)
+    run("netsh int ip set global taskoffload=enabled",      timeout=6)
+    run("netsh int ip set global neighborcachelimit=4096",  timeout=6)
+    run("netsh int ip set global routecachelimit=4096",     timeout=6)
     ok()
 
 def netreset():
     step("Resetting network stack")
-    for c in [
-        "netsh winsock reset",
-        "netsh int ip reset",
-        "netsh int tcp reset",
-        "netsh int ipv6 reset",
-        "ipconfig /release",
-        "ipconfig /renew",
-        "ipconfig /flushdns",
-    ]:
-        run(c, timeout=18)
+    run("netsh winsock reset", timeout=10)
+    run("netsh int ip reset",  timeout=10)
+    run("netsh int tcp reset", timeout=8)
+    run("netsh int ipv6 reset",timeout=8)
+    run("ipconfig /release",   timeout=12)
+    run("ipconfig /renew",     timeout=18)
+    run("ipconfig /flushdns",  timeout=5)
     ok()
 
 def mtu():
@@ -814,11 +833,28 @@ def mtu():
     tuned = 0
     for iface in ifaces:
         try:
-            run(f'netsh interface ipv4 set subinterface "{iface}" mtu=1500 store=persistent', timeout=6)
-            run(f'netsh interface ipv6 set subinterface "{iface}" mtu=1500 store=persistent', timeout=6)
+            r, out = rout(f'netsh interface ipv4 show subinterface "{iface}"', timeout=5)
+            current = None
+            if r and out:
+                for line in out.splitlines():
+                    parts = line.split()
+                    if parts and parts[0].isdigit():
+                        try: current = int(parts[0])
+                        except: pass
+            if current != 1500:
+                run(f'netsh interface ipv4 set subinterface "{iface}" mtu=1500 store=persistent', timeout=6)
+                run(f'netsh interface ipv6 set subinterface "{iface}" mtu=1500 store=persistent', timeout=6)
             tuned += 1
         except:
             pass
+    ps(
+        "Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | ForEach-Object { "
+        "  $n = $_.InterfaceAlias; "
+        "  try { netsh interface ipv4 set subinterface $n mtu=1500 store=persistent 2>$null } catch {}; "
+        "  try { netsh interface ipv6 set subinterface $n mtu=1500 store=persistent 2>$null } catch {} "
+        "}",
+        timeout=20
+    )
     ok()
     if tuned:
         print(f"    {tuned} adapter(s) set to MTU 1500")
@@ -828,18 +864,18 @@ def ethernet():
     ps(
         "Get-NetAdapter | Where-Object { $_.MediaType -eq '802.3' -and $_.Status -eq 'Up' } | ForEach-Object { "
         "  $n = $_.Name; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*SpeedDuplex' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*EEE' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword 'EnableGreenEthernet' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnPattern' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*LsoV2IPv4' -RegistryValue 1 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*LsoV2IPv6' -RegistryValue 1 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*InterruptModeration' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*TransmitBuffers' -RegistryValue 1024 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*ReceiveBuffers' -RegistryValue 1024 -ErrorAction SilentlyContinue; "
-        "  Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*FlowControl' -RegistryValue 0 -ErrorAction SilentlyContinue; "
-        "  Disable-NetAdapterPowerManagement -Name $n -ErrorAction SilentlyContinue "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*SpeedDuplex' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*EEE' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword 'EnableGreenEthernet' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnPattern' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*LsoV2IPv4' -RegistryValue 1 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*LsoV2IPv6' -RegistryValue 1 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*InterruptModeration' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*TransmitBuffers' -RegistryValue 1024 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*ReceiveBuffers' -RegistryValue 1024 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*FlowControl' -RegistryValue 0 -ErrorAction SilentlyContinue } catch {}; "
+        "  try { Disable-NetAdapterPowerManagement -Name $n -ErrorAction SilentlyContinue } catch {} "
         "}",
         timeout=25
     )
@@ -908,10 +944,21 @@ def gnvidia():
     run("nvidia-smi --auto-boost-default=0",   timeout=6)
     run("nvidia-smi --persistence-mode=1",     timeout=6)
     run("nvidia-smi --gpu-reset-ecc-errors=0", timeout=6)
-    nv = r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000"
-    run(f'reg add "{nv}" /v "RMHdcpKeygroupSize" /t REG_DWORD /d 4 /f', timeout=4)
-    run(f'reg add "{nv}" /v "EnableMidBufferPreemption" /t REG_DWORD /d 0 /f', timeout=4)
-    run(f'reg add "{nv}" /v "EnableCEPreemption" /t REG_DWORD /d 0 /f', timeout=4)
+    run(
+        r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+        r'/v "RMHdcpKeygroupSize" /t REG_DWORD /d 4 /f',
+        timeout=4
+    )
+    run(
+        r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+        r'/v "EnableMidBufferPreemption" /t REG_DWORD /d 0 /f',
+        timeout=4
+    )
+    run(
+        r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+        r'/v "EnableCEPreemption" /t REG_DWORD /d 0 /f',
+        timeout=4
+    )
     ok()
     print(f"    NVIDIA GPU: {out.strip()}")
 
@@ -922,14 +969,25 @@ def gamd():
         ok()
         print("    No AMD GPU detected, skipping")
         return
-    amd = r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000"
-    run(f'reg add "{amd}" /v "EnableUlps" /t REG_DWORD /d 0 /f', timeout=4)
-    run(f'reg add "{amd}" /v "PP_ThermalAutoThrottlingEnable" /t REG_DWORD /d 0 /f', timeout=4)
-    run(f'reg add "{amd}" /v "DisableDMACopy" /t REG_DWORD /d 1 /f', timeout=4)
+    run(
+        r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+        r'/v "EnableUlps" /t REG_DWORD /d 0 /f',
+        timeout=4
+    )
+    run(
+        r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+        r'/v "PP_ThermalAutoThrottlingEnable" /t REG_DWORD /d 0 /f',
+        timeout=4
+    )
+    run(
+        r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+        r'/v "DisableDMACopy" /t REG_DWORD /d 1 /f',
+        timeout=4
+    )
     ok()
 
 def grefresh():
-    step("Refreshing GPU display driver")
+    step("Refreshing GPU display driver (Ctrl+Shift+Win+B)")
     try:
         VK_B            = 0x42
         VK_CONTROL      = 0x11
@@ -946,23 +1004,23 @@ def grefresh():
             u32.keybd_event(k, 0, KEYEVENTF_KEYUP, 0)
             time.sleep(0.05)
         time.sleep(2)
-    except:
-        pass
-    ok()
+        ok()
+    except Exception as e:
+        ok()
+        print(f"    keybd_event failed: {e}")
 
 def gvram():
-    step("Flushing standby memory")
+    step("Flushing standby memory / VRAM pressure")
     try:
         if HAS_PSUTIL:
             k32 = ctypes.windll.kernel32
             SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
-            snapshot = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-            for pid, name in snapshot:
+            for proc in psutil.process_iter(["pid", "name"]):
                 try:
-                    n = (name or "").lower()
+                    n = (proc.info["name"] or "").lower()
                     if n in SKIP:
                         continue
-                    h = k32.OpenProcess(0x0100, False, pid)
+                    h = k32.OpenProcess(0x0100, False, proc.info["pid"])
                     if h:
                         k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
                         k32.CloseHandle(h)
@@ -974,7 +1032,7 @@ def gvram():
     ok()
 
 def gdx():
-    step("Refreshing DirectX info")
+    step("Refreshing DirectX and GPU info")
     run("dxdiag /whql:off /t %TEMP%\\dxinfo.txt", timeout=30)
     tmp = os.path.join(os.environ.get("TEMP",""), "dxinfo.txt")
     try:
@@ -986,24 +1044,27 @@ def gdx():
 def gpow():
     step("Setting GPU to max performance power state")
     HP = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
-    run(f"powercfg /setactive {HP}",                                      timeout=8)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_VIDEO VIDEOIDLE 0", timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_VIDEO DEVICEIDLE 0",timeout=6)
+    run(f"powercfg /setactive {HP}",                                       timeout=8)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_VIDEO VIDEOIDLE 0",  timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_VIDEO DEVICEIDLE 0", timeout=6)
     ok()
 
 def gsched():
     step("Optimizing GPU task scheduling")
     run(
         r'reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" '
-        r'/v "GPU Priority" /t REG_DWORD /d 8 /f', timeout=4
+        r'/v "GPU Priority" /t REG_DWORD /d 8 /f',
+        timeout=4
     )
     run(
         r'reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" '
-        r'/v "Priority" /t REG_DWORD /d 6 /f', timeout=4
+        r'/v "Priority" /t REG_DWORD /d 6 /f',
+        timeout=4
     )
     run(
         r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Scheduler" '
-        r'/v "EnablePreemption" /t REG_DWORD /d 1 /f', timeout=4
+        r'/v "EnablePreemption" /t REG_DWORD /d 1 /f',
+        timeout=4
     )
     ok()
 
@@ -1040,7 +1101,7 @@ def drender():
         '"AlwaysHibernateThumbnails"=dword:00000000\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
-        '"SystemResponsiveness"=dword:00000014\r\n'
+        '"SystemResponsiveness"=dword:00000000\r\n'
         "\r\n"
         "[HKEY_CURRENT_USER\\System\\GameConfigStore]\r\n"
         '"GameDVR_FSEBehavior"=dword:00000002\r\n'
@@ -1132,21 +1193,32 @@ def dhdr():
 
 def dgpu_disp():
     step("Setting GPU display output preferences")
-    nv = r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000"
     if nvcheck():
-        run(f'reg add "{nv}" /v "D3PCLatency" /t REG_DWORD /d 1 /f', timeout=4)
+        run(
+            r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+            r'/v "D3PCLatency" /t REG_DWORD /d 1 /f',
+            timeout=4
+        )
     if amdcheck():
-        run(f'reg add "{nv}" /v "VSyncControl" /t REG_DWORD /d 0 /f', timeout=4)
+        run(
+            r'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000" '
+            r'/v "VSyncControl" /t REG_DWORD /d 0 /f',
+            timeout=4
+        )
     ok()
 
 def gsvcs():
     step("Disabling background services for gaming")
-    svcoff(["DiagTrack", "dmwappushservice", "WerSvc", "PcaSvc"])
-    svcoff(["TabletInputService", "WSearch", "XblGameSave", "XblAuthManager"])
-    svcoff(["MapsBroker", "PhoneSvc", "RetailDemo", "WMPNetworkSvc"])
-    svcoff(["icssvc", "lfsvc", "DusmSvc", "WalletService"])
-    svcoff(["MessagingService", "OneSyncSvc", "UnistoreSvc", "UserDataSvc"])
-    svcoff(["RemoteRegistry", "Fax"])
+    svcoff([
+        "DiagTrack", "dmwappushservice", "WerSvc", "PcaSvc",
+        "SysMain", "TabletInputService", "WSearch",
+        "XblGameSave", "XblAuthManager",
+        "MapsBroker", "PhoneSvc", "RetailDemo",
+        "WMPNetworkSvc", "icssvc", "lfsvc",
+        "DusmSvc", "WalletService", "MessagingService",
+        "OneSyncSvc", "UnistoreSvc", "UserDataSvc",
+        "RemoteRegistry", "Fax",
+    ])
     ps(
         "Get-ScheduledTask | Where-Object {"
         "  $_.State -eq 'Ready' -and ("
@@ -1203,15 +1275,14 @@ def gkill():
         "vlc.exe","mspaint.exe","notepad.exe",
     }
     killed = 0
-    snapshot = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-    for pid, name in snapshot:
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
-            pname = (name or "").lower()
-            if pname in keep or pname not in kill_targets:
+            pname = (proc.info["name"] or "").lower()
+            if pname in keep:
                 continue
-            psutil.Process(pid).kill()
-            killed += 1
-            time.sleep(0.05)
+            if pname in kill_targets:
+                proc.kill()
+                killed += 1
         except:
             pass
     ok()
@@ -1234,23 +1305,26 @@ def gram():
     SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
     try:
         k32 = ctypes.windll.kernel32
-        snapshot = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-        for pid, name in snapshot:
+        for proc in psutil.process_iter(["pid", "name"]):
             try:
-                pname = (name or "").lower()
+                pname = (proc.info["name"] or "").lower()
                 if pname in SKIP or pname in game_procs:
                     continue
-                h = k32.OpenProcess(0x0100, False, pid)
+                h = k32.OpenProcess(0x0100, False, proc.info["pid"])
                 if h:
                     k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
                     k32.CloseHandle(h)
             except:
                 pass
-        for pid, name in snapshot:
+        for proc in psutil.process_iter(["pid", "name"]):
             try:
-                pname = (name or "").lower()
+                pname = (proc.info["name"] or "").lower()
                 if pname in game_procs:
-                    psutil.Process(pid).nice(psutil.HIGH_PRIORITY_CLASS)
+                    proc.nice(psutil.HIGH_PRIORITY_CLASS)
+                    try:
+                        proc.ionice(psutil.IOPRIO_HIGH)
+                    except:
+                        pass
             except:
                 pass
     except:
@@ -1264,10 +1338,10 @@ def gram():
 def gcpu():
     step("Setting CPU to max gaming priority")
     HP = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
-    run(f"powercfg /setactive {HP}",                                                  timeout=8)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 0",  timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",    timeout=6)
+    run(f"powercfg /setactive {HP}",                                                   timeout=8)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100",  timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",  timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",      timeout=6)
     reg(
         "Windows Registry Editor Version 5.00\r\n"
         "\r\n"
@@ -1279,7 +1353,7 @@ def gcpu():
         '"Background Only"="False"\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl]\r\n"
-        '"Win32PrioritySeparation"=dword:00000028\r\n'
+        '"Win32PrioritySeparation"=dword:00000026\r\n'
         "\r\n"
     )
     ok()
@@ -1288,165 +1362,26 @@ def gnet():
     step("Prioritizing game network traffic")
     run(
         r'reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Psched" '
-        r'/v NonBestEffortLimit /t REG_DWORD /d 0 /f', timeout=4
+        r'/v NonBestEffortLimit /t REG_DWORD /d 0 /f',
+        timeout=4
     )
     run(
         r'reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" '
-        r'/v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f', timeout=4
+        r'/v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f',
+        timeout=4
     )
     run("netsh int tcp set global autotuninglevel=highlyrestricted", timeout=6)
     run("netsh int tcp set global rss=enabled",                      timeout=6)
     run("ipconfig /flushdns",                                        timeout=5)
     ok()
 
-def fps():
-    step("Setting timer resolution to 0.5ms")
-    try:
-        ntdll = ctypes.windll.ntdll
-        ntdll.NtSetTimerResolution(5000, True, ctypes.byref(ctypes.c_ulong()))
-    except:
-        pass
-    ok()
-
-    step("Disabling CPU core parking")
-    run(
-        'reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerSettings\\'
-        '54533251-82be-4824-96c1-47b60b740d00\\0cc5b647-c1df-4637-891a-dec35c318583" '
-        '/v ValueMax /t REG_DWORD /d 0 /f', timeout=5
-    )
-    run(
-        'powercfg /SETACVALUEINDEX SCHEME_CURRENT '
-        '54533251-82be-4824-96c1-47b60b740d00 '
-        '0cc5b647-c1df-4637-891a-dec35c318583 0', timeout=6
-    )
-    ok()
-
-    step("Stripping GPU driver telemetry overhead")
-    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\NvControlPanel2\\Client" '
-        '/v OptInOrOutPreference /t REG_DWORD /d 0 /f', timeout=4)
-    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
-        '/v EnableRID44231 /t REG_DWORD /d 0 /f', timeout=4)
-    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
-        '/v EnableRID64640 /t REG_DWORD /d 0 /f', timeout=4)
-    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
-        '/v EnableRID66610 /t REG_DWORD /d 0 /f', timeout=4)
-    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\nvlddmkm\\Global\\NVTweak" '
-        '/v NvCplDisableD3dAA /t REG_DWORD /d 1 /f', timeout=4)
-    ok()
-
-    step("Forcing GPU low-latency pipeline")
-    reg(
-        "Windows Registry Editor Version 5.00\r\n"
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers]\r\n"
-        '"HwSchMode"=dword:00000002\r\n'
-        '"TdrDelay"=dword:0000001e\r\n'
-        '"TdrDdiDelay"=dword:0000001e\r\n'
-        '"TdrLevel"=dword:00000003\r\n'
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\Scheduler]\r\n"
-        '"EnablePreemption"=dword:00000001\r\n'
-        '"VsyncIdleTimeout"=dword:00000000\r\n'
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
-        '"NetworkThrottlingIndex"=dword:ffffffff\r\n'
-        '"SystemResponsiveness"=dword:00000014\r\n'
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
-        '"GPU Priority"=dword:00000008\r\n'
-        '"Priority"=dword:00000006\r\n'
-        '"Scheduling Category"="High"\r\n'
-        '"SFIO Priority"="High"\r\n'
-        '"Background Only"="False"\r\n'
-        '"Clock Rate"=dword:00002710\r\n'
-        "\r\n"
-    )
-    ok()
-
-    step("Disabling GameBar, DVR and overlays")
-    reg(
-        "Windows Registry Editor Version 5.00\r\n"
-        "\r\n"
-        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR]\r\n"
-        '"AppCaptureEnabled"=dword:00000000\r\n'
-        '"HistoricalCaptureEnabled"=dword:00000000\r\n'
-        "\r\n"
-        "[HKEY_CURRENT_USER\\System\\GameConfigStore]\r\n"
-        '"GameDVR_Enabled"=dword:00000000\r\n'
-        '"GameDVR_FSEBehaviorMode"=dword:00000002\r\n'
-        '"GameDVR_DXGIHonorFSEWindowsCompatible"=dword:00000001\r\n'
-        '"GameDVR_HonorUserFSEBehaviorMode"=dword:00000001\r\n'
-        '"GameDVR_EFSEFeatureFlags"=dword:00000000\r\n'
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR]\r\n"
-        '"AllowGameDVR"=dword:00000000\r\n'
-        "\r\n"
-        "[HKEY_CURRENT_USER\\Software\\Microsoft\\GameBar]\r\n"
-        '"AllowAutoGameMode"=dword:00000001\r\n'
-        '"AutoGameModeEnabled"=dword:00000001\r\n'
-        '"UseNexusForGameBarEnabled"=dword:00000000\r\n'
-        "\r\n"
-    )
-    ok()
-
-    step("Flushing standby RAM for game")
-    if HAS_PSUTIL:
-        SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
-        try:
-            k32 = ctypes.windll.kernel32
-            snapshot = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-            for pid, name in snapshot:
-                try:
-                    n = (name or "").lower()
-                    if n in SKIP:
-                        continue
-                    h = k32.OpenProcess(0x0400 | 0x0100, False, pid)
-                    if h:
-                        k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
-                        k32.CloseHandle(h)
-                except:
-                    pass
-        except:
-            pass
-    ok()
-
-    step("Applying game network low-latency tweaks")
-    run("netsh int tcp set global autotuninglevel=highlyrestricted", timeout=6)
-    run("netsh int tcp set global rss=enabled",                      timeout=6)
-    run("netsh int tcp set global chimney=disabled",                 timeout=6)
-    run('reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Psched" '
-        '/v NonBestEffortLimit /t REG_DWORD /d 0 /f', timeout=4)
-    run("ipconfig /flushdns", timeout=5)
-    ok()
-
-    step("Elevating running game processes")
-    if HAS_PSUTIL:
-        game_procs = {
-            "cs2.exe","csgo.exe","valorant.exe","fortnite.exe","r5apex.exe",
-            "eldenring.exe","witcher3.exe","cyberpunk2077.exe","rainbowsix.exe",
-            "overwatch.exe","gta5.exe","rocketleague.exe","minecraft.exe","javaw.exe",
-            "tslgame.exe","bf4.exe","bf2042.exe","destiny2.exe","cod.exe",
-            "warzone.exe","escapefromtarkov.exe","halo_infinite.exe",
-            "starfield.exe","dota2.exe","leagueclient.exe","league of legends.exe",
-            "squadgame.exe","arma3.exe","readyornot.exe",
-        }
-        boosted = 0
-        snapshot = [(p.info["pid"], p.info["name"]) for p in psutil.process_iter(["pid","name"])]
-        for pid, name in snapshot:
-            try:
-                pname = (name or "").lower()
-                if pname in game_procs:
-                    psutil.Process(pid).nice(psutil.HIGH_PRIORITY_CLASS)
-                    boosted += 1
-            except:
-                pass
-        if boosted:
-            print(f"\n    {boosted} game process(es) prioritized", end="")
-    ok()
-
-
 def scanapps():
     found = {}
+    lad = os.environ.get("LOCALAPPDATA", "")
+    pf  = os.environ.get("ProgramFiles", r"C:\Program Files")
+    pf86= os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    apd = os.environ.get("APPDATA", "")
+
     r, out = rout(
         'powershell -NoProfile -NonInteractive -Command '
         '"Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*,'
@@ -1458,7 +1393,8 @@ def scanapps():
         timeout=20
     )
     if r and out:
-        for line in out.splitlines()[1:]:
+        lines = out.splitlines()
+        for line in lines[1:]:
             parts = [p.strip('"') for p in line.split('","')]
             if len(parts) >= 1 and parts[0]:
                 name = parts[0].strip()
@@ -1466,10 +1402,13 @@ def scanapps():
                 unin = parts[2].strip() if len(parts) > 2 else ""
                 if name and name not in found:
                     found[name] = {"loc": loc, "uninstall": unin}
+
+    uwp_script = (
+        "Get-AppxPackage | Where-Object { $_.SignatureKind -ne 'System' } "
+        "| Select-Object Name,InstallLocation | ConvertTo-Csv -NoTypeInformation"
+    )
     r2, out2 = rout(
-        'powershell -NoProfile -NonInteractive -Command "'
-        'Get-AppxPackage | Where-Object { $_.SignatureKind -ne \'System\' } '
-        '| Select-Object Name,InstallLocation | ConvertTo-Csv -NoTypeInformation"',
+        f'powershell -NoProfile -NonInteractive -Command "{uwp_script}"',
         timeout=20
     )
     if r2 and out2:
@@ -1481,14 +1420,17 @@ def scanapps():
                 tag  = name + "  [UWP]"
                 if tag not in found:
                     found[tag] = {"loc": loc, "uninstall": "uwp"}
+
     return found
 
 
 def checkapp(name, info):
     issues = []
     loc = info.get("loc", "")
+
     if loc and not os.path.isdir(loc):
         issues.append("install folder missing")
+
     if loc and os.path.isdir(loc):
         try:
             exes = list(Path(loc).rglob("*.exe"))
@@ -1496,11 +1438,16 @@ def checkapp(name, info):
                 issues.append("no executable found in install folder")
         except:
             pass
+
     lad = os.environ.get("LOCALAPPDATA", "")
     apd = os.environ.get("APPDATA", "")
     n   = name.lower().split("[")[0].strip()
-    for base in [lad, apd]:
-        cd = os.path.join(base, n, "Cache")
+
+    cache_dirs = [
+        os.path.join(lad, n, "Cache"),
+        os.path.join(apd, n, "Cache"),
+    ]
+    for cd in cache_dirs:
         if os.path.isdir(cd):
             try:
                 sz = sum(f.stat().st_size for f in Path(cd).rglob("*") if f.is_file())
@@ -1508,17 +1455,22 @@ def checkapp(name, info):
                     issues.append(f"large cache ({round(sz/1024/1024)} MB)")
             except:
                 pass
-    for base in [lad]:
-        for sub in ["CrashReports", "crashes"]:
-            cd = os.path.join(base, n, sub)
-            if os.path.isdir(cd):
-                try:
-                    dumps = list(Path(cd).glob("*.dmp"))
-                    if dumps:
-                        issues.append(f"{len(dumps)} crash dump(s) found")
-                        break
-                except:
-                    pass
+
+    crash_dirs = [
+        os.path.join(lad, n, "CrashReports"),
+        os.path.join(lad, n, "crashes"),
+        os.path.join(lad, "CrashDumps"),
+    ]
+    for cd in crash_dirs:
+        if os.path.isdir(cd):
+            try:
+                dumps = list(Path(cd).glob("*.dmp"))
+                if dumps:
+                    issues.append(f"{len(dumps)} crash dump(s) found")
+                    break
+            except:
+                pass
+
     return issues
 
 
@@ -1527,21 +1479,37 @@ def fixapp(name, info):
     lad = os.environ.get("LOCALAPPDATA", "")
     apd = os.environ.get("APPDATA", "")
     loc = info.get("loc", "")
+
     step(f"Clearing cache for {name.split('[')[0].strip()}")
     for base in [lad, apd]:
-        for sub in ["Cache","cache","Code Cache","GPUCache","Temp","temp","CrashReports","crashes"]:
+        for sub in ["Cache", "cache", "Code Cache", "GPUCache", "Temp", "temp", "CrashReports", "crashes"]:
             p = os.path.join(base, n, sub)
             if os.path.isdir(p):
                 wipe(p)
     ok()
+
+    if info.get("uninstall") != "uwp" and loc and os.path.isdir(loc):
+        step("Re-registering app with Windows")
+        run(
+            f'powershell -NoProfile -NonInteractive -Command '
+            f'"Get-AppxPackage | Where-Object {{ $_.InstallLocation -like \'*{n}*\' }}'
+            f' | ForEach-Object {{ Add-AppxPackage -DisableDevelopmentMode -Register \'$($_.InstallLocation)\\AppxManifest.xml\' -ErrorAction SilentlyContinue }}"',
+            timeout=15
+        )
+        ok()
+
     if info.get("uninstall") == "uwp":
         step("Re-registering UWP package")
         mf = os.path.join(loc, "AppxManifest.xml") if loc else ""
         if mf and os.path.isfile(mf):
-            ps(f"Add-AppxPackage -DisableDevelopmentMode -Register '{mf}' -ErrorAction SilentlyContinue", timeout=15)
+            ps(
+                f"Add-AppxPackage -DisableDevelopmentMode -Register '{mf}' -ErrorAction SilentlyContinue",
+                timeout=15
+            )
         ok()
+
     step("Flushing app event logs")
-    run("wevtutil cl Application", timeout=6)
+    run(f'wevtutil cl Application', timeout=6)
     ok()
 
 
@@ -1552,6 +1520,7 @@ def autofix():
     if not apps:
         print("  No apps found.")
         return
+
     flagged = {}
     total = len(apps)
     done  = 0
@@ -1562,11 +1531,14 @@ def autofix():
         done += 1
         pct = int(done / total * 100)
         print(f"\r  Checking... {pct}%  ({done}/{total})", end="", flush=True)
+
     print(f"\r  Scan complete. {total} apps checked.              ")
     print()
+
     if not flagged:
         print("  No issues found across all apps.")
         return
+
     print(f"  Found issues in {len(flagged)} app(s):\n")
     for name, (info, issues) in flagged.items():
         label = name.split("[")[0].strip()
@@ -1574,12 +1546,15 @@ def autofix():
         for iss in issues:
             print(f"      - {iss}")
     print()
+
     go = input("  Fix all flagged apps now? (y/N): ").strip().lower()
     if go != "y":
         return
+
     print()
     for name, (info, issues) in flagged.items():
         fixapp(name, info)
+
     print()
     print("  All flagged apps repaired.")
 
@@ -1591,17 +1566,21 @@ def pickapp():
     if not apps:
         print("  No apps found.")
         return
+
     names = sorted(apps.keys(), key=lambda x: x.lower())
     print(f"\n  {len(names)} apps found.\n")
+
     q = input("  Search app name (or press Enter to list all): ").strip().lower()
     if q:
         names = [n for n in names if q in n.lower()]
         if not names:
             print("  No matches found.")
             return
+
     for i, n in enumerate(names, 1):
         label = n.split("[")[0].strip()
         print(f"  [{i:>3}] {label}" + ("  [UWP]" if "[UWP]" in n else ""))
+
     print()
     try:
         pick = int(input("  Select app number: ").strip())
@@ -1611,17 +1590,21 @@ def pickapp():
     except:
         print("  Invalid input.")
         return
+
     chosen = names[pick - 1]
     info   = apps[chosen]
     label  = chosen.split("[")[0].strip()
+
     print(f"\n  Checking {label}...")
     issues = checkapp(chosen, info)
+
     if not issues:
         print(f"  No issues found with {label}.")
     else:
         print(f"  Issues found:")
         for iss in issues:
             print(f"    - {iss}")
+
     print()
     go = input(f"  Repair {label} now? (y/N): ").strip().lower()
     if go == "y":
@@ -1635,9 +1618,11 @@ def sysfix():
     step("Running SFC scan")
     run("sfc /scannow", timeout=300)
     ok()
+
     step("Running DISM health restore")
     run("DISM /Online /Cleanup-Image /RestoreHealth", timeout=300)
     ok()
+
     step("Rebuilding icon cache")
     lad = os.environ.get("LOCALAPPDATA", "")
     ic  = os.path.join(lad, "IconCache.db")
@@ -1647,17 +1632,20 @@ def sysfix():
     except:
         pass
     ok()
+
     step("Rebuilding font cache")
-    run('net stop "Windows Font Cache Service"', timeout=8)
+    run('net stop "Windows Font Cache Service"',                             timeout=8)
     win = os.environ.get("SystemRoot", r"C:\Windows")
     fc  = os.path.join(win, "ServiceProfiles", "LocalService", "AppData", "Local", "FontCache")
     if os.path.isdir(fc):
         wipe(fc)
-    run('net start "Windows Font Cache Service"', timeout=8)
+    run('net start "Windows Font Cache Service"',                            timeout=8)
     ok()
+
     step("Clearing Windows Store cache")
     run("wsreset.exe", timeout=30)
     ok()
+
     step("Re-registering all UWP apps")
     ps(
         "Get-AppxPackage | ForEach-Object { "
@@ -1669,18 +1657,28 @@ def sysfix():
         timeout=120
     )
     ok()
+
     step("Fixing broken file associations")
-    run(r'reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts" /f', timeout=6)
+    run(
+        r'reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts" /f',
+        timeout=6
+    )
     ok()
+
     step("Clearing thumbnail cache")
-    run("cleanmgr /sagerun:1", timeout=60)
-    wipe(os.path.join(os.environ.get("LOCALAPPDATA",""), "Microsoft", "Windows", "Explorer"))
+    run("cleanmgr /sagerun:1",                                               timeout=60)
+    wipe(os.path.join(
+        os.environ.get("LOCALAPPDATA", ""),
+        "Microsoft", "Windows", "Explorer"
+    ))
     ok()
+
     step("Resetting Windows Update components")
     for svc in ["wuauserv", "cryptSvc", "bits", "msiserver"]:
         run(f"net stop {svc}", timeout=8)
-    sd = os.path.join(win, "SoftwareDistribution")
-    cr = os.path.join(win, "System32", "catroot2")
+    win = os.environ.get("SystemRoot", r"C:\Windows")
+    sd  = os.path.join(win, "SoftwareDistribution")
+    cr  = os.path.join(win, "System32", "catroot2")
     if os.path.isdir(sd):
         shutil.rmtree(sd, ignore_errors=True)
     if os.path.isdir(cr):
@@ -1688,11 +1686,21 @@ def sysfix():
     for svc in ["wuauserv", "cryptSvc", "bits", "msiserver"]:
         run(f"net start {svc}", timeout=8)
     ok()
+
     step("Flushing DNS and resetting Winsock")
     run("ipconfig /flushdns",  timeout=5)
     run("netsh winsock reset", timeout=10)
     run("netsh int ip reset",  timeout=10)
     ok()
+
+    step("Fixing common registry permissions")
+    for key in [
+        r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+        r"HKLM\SYSTEM\CurrentControlSet\Services",
+    ]:
+        run(f'icacls "{key}" /reset /T /Q', timeout=10)
+    ok()
+
     print()
     print("  System issue resolver complete!")
 
@@ -1704,7 +1712,9 @@ def repairrun():
     print("  [3] System issue resolver")
     print("  [B] Back")
     print()
+
     c = input("  Enter: ").strip().upper()
+
     if c == "1":
         pickapp()
     elif c == "2":
@@ -1797,6 +1807,150 @@ def disprun():
     print()
     print("  Display tuning complete!")
 
+def fps():
+    step("Setting timer resolution to 0.5ms")
+    try:
+        ntdll = ctypes.windll.ntdll
+        ntdll.NtSetTimerResolution(5000, True, ctypes.byref(ctypes.c_ulong()))
+    except:
+        pass
+    ok()
+
+    step("Disabling CPU core parking")
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerSettings\\'
+        '54533251-82be-4824-96c1-47b60b740d00\\0cc5b647-c1df-4637-891a-dec35c318583" '
+        '/v ValueMax /t REG_DWORD /d 0 /f', timeout=5)
+    run('powercfg /SETACVALUEINDEX SCHEME_CURRENT '
+        '54533251-82be-4824-96c1-47b60b740d00 '
+        '0cc5b647-c1df-4637-891a-dec35c318583 0', timeout=6)
+    ok()
+
+    step("Stripping GPU driver telemetry overhead")
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\NvControlPanel2\\Client" '
+        '/v OptInOrOutPreference /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
+        '/v EnableRID44231 /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
+        '/v EnableRID64640 /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\FTS" '
+        '/v EnableRID66610 /t REG_DWORD /d 0 /f', timeout=4)
+    run('reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\nvlddmkm\\Global\\NVTweak" '
+        '/v NvCplDisableD3dAA /t REG_DWORD /d 1 /f', timeout=4)
+    ok()
+
+    step("Forcing GPU low-latency pipeline")
+    reg(
+        "Windows Registry Editor Version 5.00\r\n"
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers]\r\n"
+        '"HwSchMode"=dword:00000002\r\n'
+        '"TdrDelay"=dword:0000001e\r\n'
+        '"TdrDdiDelay"=dword:0000001e\r\n'
+        '"TdrLevel"=dword:00000003\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\Scheduler]\r\n"
+        '"EnablePreemption"=dword:00000001\r\n'
+        '"VsyncIdleTimeout"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
+        '"NetworkThrottlingIndex"=dword:ffffffff\r\n'
+        '"SystemResponsiveness"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
+        '"GPU Priority"=dword:00000008\r\n'
+        '"Priority"=dword:00000006\r\n'
+        '"Scheduling Category"="High"\r\n'
+        '"SFIO Priority"="High"\r\n'
+        '"Background Only"="False"\r\n'
+        '"Clock Rate"=dword:00002710\r\n'
+        "\r\n"
+    )
+    ok()
+
+    step("Disabling GameBar, DVR and overlays")
+    reg(
+        "Windows Registry Editor Version 5.00\r\n"
+        "\r\n"
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR]\r\n"
+        '"AppCaptureEnabled"=dword:00000000\r\n'
+        '"HistoricalCaptureEnabled"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_CURRENT_USER\\System\\GameConfigStore]\r\n"
+        '"GameDVR_Enabled"=dword:00000000\r\n'
+        '"GameDVR_FSEBehaviorMode"=dword:00000002\r\n'
+        '"GameDVR_DXGIHonorFSEWindowsCompatible"=dword:00000001\r\n'
+        '"GameDVR_HonorUserFSEBehaviorMode"=dword:00000001\r\n'
+        '"GameDVR_EFSEFeatureFlags"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR]\r\n"
+        '"AllowGameDVR"=dword:00000000\r\n'
+        "\r\n"
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\GameBar]\r\n"
+        '"AllowAutoGameMode"=dword:00000001\r\n'
+        '"AutoGameModeEnabled"=dword:00000001\r\n'
+        '"UseNexusForGameBarEnabled"=dword:00000000\r\n'
+        "\r\n"
+    )
+    ok()
+
+    step("Flushing standby RAM for game")
+    if HAS_PSUTIL:
+        SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
+        try:
+            k32 = ctypes.windll.kernel32
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    n = (proc.info["name"] or "").lower()
+                    if n in SKIP:
+                        continue
+                    h = k32.OpenProcess(0x0400 | 0x0100, False, proc.info["pid"])
+                    if h:
+                        k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
+                        k32.CloseHandle(h)
+                except:
+                    pass
+        except:
+            pass
+    ok()
+
+    step("Applying game network low-latency tweaks")
+    run("netsh int tcp set global autotuninglevel=highlyrestricted", timeout=6)
+    run("netsh int tcp set global rss=enabled",                      timeout=6)
+    run("netsh int tcp set global chimney=disabled",                 timeout=6)
+    run('reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Psched" '
+        '/v NonBestEffortLimit /t REG_DWORD /d 0 /f', timeout=4)
+    run("ipconfig /flushdns", timeout=5)
+    ok()
+
+    step("Elevating running game processes")
+    if HAS_PSUTIL:
+        game_procs = {
+            "cs2.exe","csgo.exe","valorant.exe","fortnite.exe","r5apex.exe",
+            "eldenring.exe","witcher3.exe","cyberpunk2077.exe","rainbowsix.exe",
+            "overwatch.exe","gta5.exe","rocketleague.exe","minecraft.exe","javaw.exe",
+            "tslgame.exe","bf4.exe","bf2042.exe","destiny2.exe","cod.exe",
+            "warzone.exe","escapefromtarkov.exe","halo_infinite.exe",
+            "starfield.exe","dota2.exe","leagueclient.exe","league of legends.exe",
+            "squadgame.exe","arma3.exe","readyornot.exe",
+        }
+        boosted = 0
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                pname = (proc.info["name"] or "").lower()
+                if pname in game_procs:
+                    proc.nice(psutil.HIGH_PRIORITY_CLASS)
+                    try:
+                        proc.ionice(psutil.IOPRIO_HIGH)
+                    except:
+                        pass
+                    boosted += 1
+            except:
+                pass
+        if boosted:
+            print(f"\n    {boosted} game process(es) prioritized", end="")
+    ok()
+
+
 def gamerun():
     print()
     print("  Preparing gaming mode...")
@@ -1814,9 +1968,11 @@ def gamerun():
 
 def main():
     banner()
+
     if not admin():
         print("  WARNING: Not running as admin.")
         print("  Right-click -> Run as administrator for best results.\n")
+
     if not HAS_PSUTIL:
         step("Installing psutil")
         try:
@@ -1830,7 +1986,9 @@ def main():
             print("  Restart the script for full RAM features.\n")
         except:
             print("failed. Some features limited.\n")
+
     specs()
+
     print("  [1] Hex Tweaker  ")
     print("  [2] Hex Net Booster  ")
     print("  [3] Hex GPU Optimizer  ")
@@ -1839,7 +1997,9 @@ def main():
     print("  [6] Hex Repair Tool  ")
     print("  [Q] Quit  ")
     print()
+
     choice = input("  Enter: ").strip().upper()
+
     if choice == "Q":
         sys.exit(0)
     elif choice == "1":
@@ -1857,6 +2017,7 @@ def main():
     else:
         print("  Invalid. Enter 1-6 or Q.")
         return
+
     print()
     after()
 
