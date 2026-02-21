@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.4",
+    r"         Hex-win10 Tweaker v1.7.9",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
@@ -158,7 +158,7 @@ def after():
     print()
     c = input("  Enter: ").strip()
     if c == "2":
-        main()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
     else:
         sys.exit(0)
 
@@ -423,7 +423,6 @@ def gaming():
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
         '"GPU Priority"=dword:00000008\r\n'
         '"Priority"=dword:00000006\r\n'
-        '"Affinity"=dword:00000000\r\n'
         '"Scheduling Category"="High"\r\n'
         '"SFIO Priority"="High"\r\n'
         '"Background Only"="False"\r\n'
@@ -626,10 +625,6 @@ def beast():
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager]\r\n"
         '"HeapDeCommitFreeBlockThreshold"=dword:00040000\r\n'
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\csrss.exe\\PerfOptions]\r\n"
-        '"CpuPriorityClass"=dword:00000004\r\n'
-        '"IoPriority"=dword:00000003\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl]\r\n"
         '"IRQ8Priority"=dword:00000001\r\n'
@@ -1336,10 +1331,9 @@ def gram():
         pass
     ps("[GC]::Collect(2,[System.GCCollectionMode]::Forced,$true,$true);[GC]::WaitForPendingFinalizers()", timeout=10)
     ok()
-    after = gb(psutil.virtual_memory().available)
-    gained = round(after - before, 1)
-    ok()
-    print(f"    +{gained} GB freed  ({after} GB now available)")
+    after_gb = gb(psutil.virtual_memory().available)
+    gained = round(after_gb - before, 1)
+    print(f"    +{gained} GB freed  ({after_gb} GB now available)")
 
 def gcpu():
     step("Setting CPU to max gaming priority")
@@ -1348,7 +1342,6 @@ def gcpu():
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100",  timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",  timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",      timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISABLE 1",        timeout=6)
     reg(
         "Windows Registry Editor Version 5.00\r\n"
         "\r\n"
@@ -1821,10 +1814,6 @@ def fps():
         ntdll.NtSetTimerResolution(5000, True, ctypes.byref(ctypes.c_ulong()))
     except:
         pass
-    run('powershell -NoProfile -NonInteractive -Command "'
-        'Add-Type -TypeDefinition \'using System;using System.Runtime.InteropServices;'
-        'public class TR{[DllImport("ntdll.dll")]public static extern int NtSetTimerResolution(int dr,bool sr,ref int cr);}\';'
-        '[TR]::NtSetTimerResolution(5000,$true,[ref]0)"', timeout=8)
     ok()
 
     step("Disabling CPU core parking")
@@ -1834,25 +1823,6 @@ def fps():
     run('powercfg /SETACVALUEINDEX SCHEME_CURRENT '
         '54533251-82be-4824-96c1-47b60b740d00 '
         '0cc5b647-c1df-4637-891a-dec35c318583 0', timeout=6)
-    run('powercfg /SETACVALUEINDEX SCHEME_CURRENT '
-        '54533251-82be-4824-96c1-47b60b740d00 '
-        'ea062031-0e34-4ff1-9b6d-eb1059334028 100', timeout=6)
-    ok()
-
-    step("Locking CPU to max frequency during gaming")
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100", timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100", timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",     timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",    timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFEPP 0",           timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR LATENCYHINTPERF1 100",timeout=6)
-    ok()
-
-    step("Disabling HPET system timer")
-    run("bcdedit /set useplatformclock false",   timeout=6)
-    run("bcdedit /set disabledynamictick yes",   timeout=6)
-    run("bcdedit /set tscsyncpolicy enhanced",   timeout=6)
-    run("bcdedit /set x2apicpolicy enable",      timeout=6)
     ok()
 
     step("Stripping GPU driver telemetry overhead")
@@ -1868,7 +1838,7 @@ def fps():
         '/v NvCplDisableD3dAA /t REG_DWORD /d 1 /f', timeout=4)
     ok()
 
-    step("Forcing GPU preemption and low-latency pipeline")
+    step("Forcing GPU low-latency pipeline")
     reg(
         "Windows Registry Editor Version 5.00\r\n"
         "\r\n"
@@ -1923,7 +1893,7 @@ def fps():
     )
     ok()
 
-    step("Flushing standby RAM and zeroing working sets")
+    step("Flushing standby RAM for game")
     if HAS_PSUTIL:
         SKIP = {"system","registry","smss.exe","csrss.exe","wininit.exe","services.exe","lsass.exe"}
         try:
@@ -1941,22 +1911,9 @@ def fps():
                     pass
         except:
             pass
-    ps("[System.GC]::Collect(2,[System.GCCollectionMode]::Forced,$true,$true);"
-       "[System.GC]::WaitForPendingFinalizers();"
-       "[System.GC]::Collect(2,[System.GCCollectionMode]::Forced,$true,$true)", timeout=10)
     ok()
 
-    step("Disabling power throttling globally")
-    reg(
-        "Windows Registry Editor Version 5.00\r\n"
-        "\r\n"
-        "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling]\r\n"
-        '"PowerThrottlingOff"=dword:00000001\r\n'
-        "\r\n"
-    )
-    ok()
-
-    step("Applying network low-latency tweaks for gaming")
+    step("Applying game network low-latency tweaks")
     run("netsh int tcp set global autotuninglevel=highlyrestricted", timeout=6)
     run("netsh int tcp set global rss=enabled",                      timeout=6)
     run("netsh int tcp set global chimney=disabled",                 timeout=6)
@@ -1965,7 +1922,7 @@ def fps():
     run("ipconfig /flushdns", timeout=5)
     ok()
 
-    step("Elevating running game processes to High priority")
+    step("Elevating running game processes")
     if HAS_PSUTIL:
         game_procs = {
             "cs2.exe","csgo.exe","valorant.exe","fortnite.exe","r5apex.exe",
