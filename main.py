@@ -21,7 +21,7 @@ BANNER_LINES = [
     r" |  _  |  __/>  <   \ V  V / | | | | |",
     r" |_| |_|\___/_/\_\   \_/\_/  |_|_| |_|",
     r"",
-    r"         Hex-win10 Tweaker v1.7.9",
+    r"         Hex-win10 Tweaker v1.5",
     r"     made with <3 by @hex1 on TikTok",
 ]
 
@@ -228,7 +228,7 @@ def nvcheck():
         "nvidia-smi --query-gpu=name --format=csv,noheader,nounits",
         timeout=4
     )
-    return ok and bool(out)
+    return r and bool(out)
 
 def amdcheck():
     r, out = rout("wmic path win32_VideoController get name", timeout=6)
@@ -240,7 +240,7 @@ def bloat():
         ok()
         return
     targets = {
-        "msedge.exe","microsoftedge.exe","microsoftedgeupdate.exe",
+        "msedge.exe","microsoftedge.exe","microsoftedgeupdateml.exe",
         "searchindexer.exe","searchapp.exe","searchui.exe",
         "onedrive.exe","onedrivesetup.exe",
         "skypeapp.exe","skype.exe",
@@ -323,18 +323,20 @@ def ram():
     mm       = r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
     pf_param = mm + r"\PrefetchParameters"
     sp       = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
+
     for key, name, val in [
-        (mm,       "DisablePagingExecutive", 1),
+        (mm,       "DisablePagingExecutive", 0),
         (mm,       "LargeSystemCache",       0),
-        (mm,       "IoPageLockLimit",        983040),
-        (mm,       "SecondLevelDataCache",   512),
-        (mm,       "PoolUsageMaximum",       60),
+        (mm,       "IoPageLockLimit",        0),
+        (mm,       "SecondLevelDataCache",   0),
+        (mm,       "PoolUsageMaximum",       80),
         (mm,       "PagedPoolSize",          0),
         (pf_param, "EnablePrefetcher",       3),
         (pf_param, "EnableSuperfetch",       3),
-        (sp,       "SystemResponsiveness",   0),
+        (sp,       "SystemResponsiveness",   20),
     ]:
         run(f'reg add "{key}" /v "{name}" /t REG_DWORD /d {val} /f', timeout=5)
+
     if total_gb <= 8:
         pf_init, pf_max = 8192, 16384
     elif total_gb <= 16:
@@ -343,6 +345,7 @@ def ram():
         pf_init, pf_max = 2048, 4096
     else:
         pf_init, pf_max = 1024, 2048
+
     ps_script = (
         "$cs = Get-WmiObject Win32_ComputerSystem; "
         "$cs.AutomaticManagedPagefile = $false; "
@@ -355,26 +358,6 @@ def ram():
         "}"
     )
     ps(ps_script, timeout=12)
-    if HAS_PSUTIL:
-        try:
-            k32  = ctypes.windll.kernel32
-            SKIP = {
-                "system", "registry", "smss.exe", "csrss.exe",
-                "wininit.exe", "services.exe", "lsass.exe",
-            }
-            for proc in psutil.process_iter(["pid", "name"]):
-                try:
-                    n = (proc.info["name"] or "").lower()
-                    if n in SKIP:
-                        continue
-                    h = k32.OpenProcess(0x0100, False, proc.info["pid"])
-                    if h:
-                        k32.SetProcessWorkingSetSize(h, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
-                        k32.CloseHandle(h)
-                except:
-                    pass
-        except:
-            pass
     ok()
 
 def power():
@@ -382,7 +365,7 @@ def power():
     HP = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
     run(f"powercfg /setactive {HP}",                                                       timeout=8)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_USB USBSELECTIVESUSPEND 0",         timeout=6)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5",       timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 0",       timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",     timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",         timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTPOL 100",        timeout=6)
@@ -414,11 +397,11 @@ def gaming():
         '"HwSchMode"=dword:00000002\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl]\r\n"
-        '"Win32PrioritySeparation"=dword:00000026\r\n'
+        '"Win32PrioritySeparation"=dword:00000028\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
         '"NetworkThrottlingIndex"=dword:ffffffff\r\n'
-        '"SystemResponsiveness"=dword:00000000\r\n'
+        '"SystemResponsiveness"=dword:00000014\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
         '"GPU Priority"=dword:00000008\r\n'
@@ -585,7 +568,6 @@ def storage():
         run("fsutil behavior set disable8dot3 1",                                             timeout=5)
         run("fsutil behavior set encryptpagingfile 0",                                        timeout=5)
         run('schtasks /Change /TN "Microsoft\\Windows\\Defrag\\ScheduledDefrag" /Disable',   timeout=5)
-        svcoff(["SysMain"])
     else:
         run("sc config SysMain start= auto", timeout=5)
         run("sc start SysMain",              timeout=5)
@@ -612,12 +594,12 @@ def beast():
         '"NtfsMemoryUsage"=dword:00000002\r\n'
         "\r\n"
         "[HKEY_CURRENT_USER\\Control Panel\\Desktop]\r\n"
-        '"AutoEndTasks"="1"\r\n'
-        '"HungAppTimeout"="1000"\r\n'
-        '"WaitToKillAppTimeout"="2000"\r\n'
+        '"AutoEndTasks"="0"\r\n'
+        '"HungAppTimeout"="5000"\r\n'
+        '"WaitToKillAppTimeout"="5000"\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control]\r\n"
-        '"WaitToKillServiceTimeout"="2000"\r\n'
+        '"WaitToKillServiceTimeout"="5000"\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters]\r\n"
         '"IRPStackSize"=dword:00000014\r\n'
@@ -747,8 +729,8 @@ def adapters():
 
 def wifi():
     step("Optimizing WiFi")
-    adapters = wifiadp()
-    for adapter in adapters:
+    adps = wifiadp()
+    for adapter in adps:
         safe = adapter.replace("'","").replace('"',"")
         for kw, val in [
             ("RoamAggressiveness",   "1"),
@@ -1101,7 +1083,7 @@ def drender():
         '"AlwaysHibernateThumbnails"=dword:00000000\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
-        '"SystemResponsiveness"=dword:00000000\r\n'
+        '"SystemResponsiveness"=dword:00000014\r\n'
         "\r\n"
         "[HKEY_CURRENT_USER\\System\\GameConfigStore]\r\n"
         '"GameDVR_FSEBehavior"=dword:00000002\r\n'
@@ -1211,7 +1193,7 @@ def gsvcs():
     step("Disabling background services for gaming")
     svcoff([
         "DiagTrack", "dmwappushservice", "WerSvc", "PcaSvc",
-        "SysMain", "TabletInputService", "WSearch",
+        "TabletInputService", "WSearch",
         "XblGameSave", "XblAuthManager",
         "MapsBroker", "PhoneSvc", "RetailDemo",
         "WMPNetworkSvc", "icssvc", "lfsvc",
@@ -1339,7 +1321,7 @@ def gcpu():
     step("Setting CPU to max gaming priority")
     HP = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
     run(f"powercfg /setactive {HP}",                                                   timeout=8)
-    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100",  timeout=6)
+    run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 0",    timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100",  timeout=6)
     run("powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2",      timeout=6)
     reg(
@@ -1353,7 +1335,7 @@ def gcpu():
         '"Background Only"="False"\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl]\r\n"
-        '"Win32PrioritySeparation"=dword:00000026\r\n'
+        '"Win32PrioritySeparation"=dword:00000028\r\n'
         "\r\n"
     )
     ok()
@@ -1854,7 +1836,7 @@ def fps():
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile]\r\n"
         '"NetworkThrottlingIndex"=dword:ffffffff\r\n'
-        '"SystemResponsiveness"=dword:00000000\r\n'
+        '"SystemResponsiveness"=dword:00000014\r\n'
         "\r\n"
         "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games]\r\n"
         '"GPU Priority"=dword:00000008\r\n'
