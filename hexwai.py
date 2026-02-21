@@ -898,7 +898,6 @@ def main():
 
     show_specs()
 
-    print("  [1] Hex Tweaker")
     print("  [2] Hex Net Booster")
     print("  [Q] Quit")
     print()
@@ -912,7 +911,7 @@ def main():
     elif choice == "2":
         run_net_booster()
     else:
-        print("  Invalid. Enter 1, 2, or Q.")
+
         return
 
     print()
